@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 
+import java.util.LinkedList;
+
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -16,12 +18,14 @@ import org.xml.sax.SAXException;
 public class Convert
 {
 	private boolean debug = false;
-	private int feedRate = 1000;
+	private int feedRate = 5000;
+	private int accuracy = 60;
 	
-	public Convert(int width, int height, int feedRate, boolean debug, String inFile, String outFile)
+	public Convert(int width, int height, int feedRate, int accuracy, boolean debug, String inFile, String outFile)
 	{
 		this.debug = debug;
 		this.feedRate = feedRate;
+		this.accuracy = accuracy;
 		
 		File in = new File(inFile);
 		File out = new File(outFile);
@@ -45,19 +49,30 @@ public class Convert
 		NodeList rectangleElements = getElements(xml, "rect");
 		NodeList polylineElements = getElements(xml, "polyline");
 		NodeList polygonElements = getElements(xml, "polygon");
+		NodeList circleElements = getElements(xml, "circle");
+		NodeList ellipseElements = getElements(xml, "ellipse");
 		
 		if(debug)
 			System.out.println("Preparing to generate Gcode file.");
 		
 		BufferedWriter bw = openFile(out);
 		
+		writeLine("G21", bw);
+		writeLine("G90", bw);
+		writeLine("G0 X0 Y0 Z5", bw);
+		
 		generateLineElements(lineElements, bw);
 		generateRectangleElements(rectangleElements, bw);
 		generatePolylineElements(polylineElements, bw);
 		generatePolygonElements(polygonElements, bw);
+		generateCirleElements(circleElements, bw);
+		generateEllipseElements(ellipseElements, bw);
 		
 		if(debug)
 			System.out.println("Wrapping up now...");
+		
+		writeLine("G0 Z10", bw);
+		writeLine("G0 X0 Y0 Z5", bw);
 		
 		try
 		{
@@ -125,8 +140,7 @@ public class Convert
 			return null;
 		}	
 	}
-	
-	
+		
 	private BufferedWriter openFile(File out)
 	{
 		if(debug)
@@ -410,18 +424,25 @@ public class Convert
 					continue;
 				}
 				
-				if(debug)
-					System.out.println("Drawing the top half of the circle.");
+				LinkedList<DPoint> list = new LinkedList<DPoint>();
 				
-				writeLine("G0 X" + (x + radius) + " Y" + y, out);
-				writeLine("G0 Z0", out);
-				writeLine("G2 F" + feedRate + " X" + (x - radius) + " Y" + y + " J" + radius, out);
+				double amount = 360/accuracy;
 				
-				if(debug)
-					System.out.println("Drawing the bottom half of the circle.");
+				for(double k = 0; k < 360; k += amount)
+				{
+					double tempx = x + radius * (Math.cos(k));
+					double tempy = y + radius * (Math.sin(k));
 					
-				writeLine("G2 F" + feedRate + " X" + (x + radius) + " Y" + y + " J" + (-radius), out);
-				writeLine("G0 Z5", out);
+					list.add(new DPoint(tempx, tempy));
+				}
+				
+				writeLine("G0 X" + list.removeFirst().x + " Y" + list.removeFirst().y, out);
+				writeLine("G0 Z0", out);
+				
+				for(DPoint p : list)
+				{
+					writeLine("G1 F" + feedRate + " X" + p.x + " Y" + p.y, out);
+				}
 			}
 		}
 		else
@@ -505,9 +526,10 @@ public class Convert
 	
 	public static void main(String[] args)
 	{
-		int width = 800;
-		int height = 800;
-		int fr = 1000;
+		int width = 200;
+		int height = 200;
+		int fr = 5000;
+		int acc = 60;
 		
 		boolean debug = false;
 		
@@ -524,6 +546,7 @@ public class Convert
 			System.out.println("\t-d Turn on debug messages.");
 			System.out.println("\t-o Location of the output.");
 			System.out.println("\t-r The feedrate of X and Y. The default is 1000mm/s");
+			System.out.println("\t-A The degree of accuracy curves are drawn to.");
 			
 			System.exit(0);
 		}
@@ -541,12 +564,12 @@ public class Convert
 				catch(NumberFormatException e)
 				{
 					System.out.println("Argument for '-w' must be an integer.");
-					System.out.println("Defaulting to 800mm wide.");
+					System.out.println("Defaulting to 200mm wide.");
 				}
 				catch(ArrayIndexOutOfBoundsException e)
 				{
 					System.out.println("Argument for '-w' must exist.");
-					System.out.println("Defaulting to 800mm wide.");
+					System.out.println("Defaulting to 200mm wide.");
 				}
 			}
 			else if(args[i].equals("-h"))
@@ -558,12 +581,12 @@ public class Convert
 				catch(NumberFormatException e)
 				{
 					System.out.println("Argument for '-h' must be an integer.");
-					System.out.println("Defaulting to 800mm high.");
+					System.out.println("Defaulting to 200mm high.");
 				}
 				catch(ArrayIndexOutOfBoundsException e)
 				{
 					System.out.println("Argument for '-h' must be an integer.");
-					System.out.println("Defaulting to 800mm high.");
+					System.out.println("Defaulting to 200mm high.");
 				}
 			}
 			else if(args[i].equals("-d"))
@@ -602,12 +625,29 @@ public class Convert
 				catch(NumberFormatException e)
 				{
 					System.out.println("Argument for -r must be an integer.");
-					System.out.println("Defaulting to 1000.");
+					System.out.println("Defaulting to 5000.");
 				}
 				catch(ArrayIndexOutOfBoundsException e)
 				{
 					System.out.println("Argument for -r must exist.");
-					System.out.println("Defaulting to 1000.");
+					System.out.println("Defaulting to 5000.");
+				}
+			}
+			else if(args[i].equals("-A"))
+			{
+				try
+				{
+					acc = Integer.parseInt(args[i + 1]);
+				}
+				catch(NumberFormatException e)
+				{
+					System.out.println("Argument for -A must be an integer.");
+					System.out.println("Defaulting to 60.");
+				}
+				catch(ArrayIndexOutOfBoundsException e)
+				{
+					System.out.println("Argument for -A must exist.");
+					System.out.println("Defaulting to 60.");
 				}
 			}
 		}
@@ -618,6 +658,18 @@ public class Convert
 			System.out.println("Output file is defaulting to ./output.gcode");
 		}
 		
-		new Convert(width, height, fr, debug, inFile, outFile);
+		new Convert(width, height, fr, acc, debug, inFile, outFile);
+	}
+
+	private class DPoint
+	{
+		public double x = 0;
+		public double y = 0;
+		
+		public DPoint(double a, double b)
+		{
+			x = a;
+			y = b;
+		}
 	}
 }
