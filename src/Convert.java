@@ -430,8 +430,8 @@ public class Convert
 				
 				for(double k = 0; k < 360; k += amount)
 				{
-					double tempx = x + radius * (Math.cos(k));
-					double tempy = y + radius * (Math.sin(k));
+					double tempx = x + radius * (Math.cos(Math.toRadians(k)));
+					double tempy = y + radius * (Math.sin(Math.toRadians(k)));
 					
 					list.add(new DPoint(tempx, tempy));
 				}
@@ -487,18 +487,30 @@ public class Convert
 					continue;
 				}
 				
-				if(debug)
-					System.out.println("Drawing the top half of the ellipse.");
+				double inc = 360/accuracy;
+				LinkedList<DPoint> points = new LinkedList<DPoint>();
 				
-				writeLine("G0 X" + (x + radiusx) + " Y" + y, out);
-				writeLine("G0 Z0", out);
-				writeLine("G2 F" + feedRate + " X" + (x - radiusx) + " Y" + y + " J" + radiusy, out);
-				
-				if(debug)
-					System.out.println("Drawing the bottom half of the ellipse.");
+				for(int j = 0; j < 360; j+= inc)
+				{
+					double jR = Math.toRadians(j);
+					double phi = 0;
 					
-				writeLine("G2 F" + feedRate + " X" + (x + radiusx) + " Y" + y + " J" + (-radiusy), out);
-				writeLine("G0 Z5", out);
+					if(radiusy > radiusx)
+						phi = Math.PI / 2;
+					
+					double xtemp = x + (radiusx * Math.cos(jR) * Math.cos(phi)) - (radiusy * Math.sin(jR) * Math.sin(phi));
+					double ytemp = y + (radiusx * Math.cos(jR) * Math.sin(phi)) - (radiusy * Math.sin(jR) * Math.cos(phi));
+					
+					points.add(new DPoint(xtemp, ytemp));
+					
+					writeLine("G0 X" + points.removeFirst().x + " Y" + points.removeFirst().y, out);
+					writeLine("G0 Z0", out);
+				
+					for(DPoint p : points)
+					{
+						writeLine("G1 F" + feedRate + " X" + p.x + " Y" + p.y, out);
+					}
+				}
 			}
 		}
 		else
